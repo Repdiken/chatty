@@ -23,6 +23,8 @@ class Conversation(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def __str__(self):
+        return self.title 
 
 class ConversationMember(models.Model):
     conversation = models.ForeignKey(
@@ -49,3 +51,6 @@ class ConversationMember(models.Model):
 
     class Meta:
         unique_together = ("conversation", "user")
+
+    def __str__(self):
+        return f"{self.user} in {self.conversation}"

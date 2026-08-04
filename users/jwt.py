@@ -17,7 +17,9 @@ class CustomJWTAuthentication(JWTAuthentication):
     def get_user(self, validated_token):
         user = super().get_user(validated_token)
 
-        if validated_token["token_version"] != user.token_version:
+        token_version = validated_token.get("token_version")
+
+        if token_version is None or token_version != user.token_version:
             raise AuthenticationFailed("Token is no longer valid.")
 
         return user

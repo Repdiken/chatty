@@ -9,4 +9,8 @@ class ConversationAdmin(admin.ModelAdmin):
 admin.site.register(Conversation, ConversationAdmin)
 
 
-admin.site.register(ConversationMember)
+class ConversationMemberAdmin(admin.ModelAdmin):
+    list_display = ["id", "user", "conversation", "role"]
+
+
+admin.site.register(ConversationMember, ConversationMemberAdmin)

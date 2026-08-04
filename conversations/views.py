@@ -1,12 +1,16 @@
-from rest_framework.generics import CreateAPIView, ListAPIView
+from rest_framework.generics import (
+    CreateAPIView,
+    ListAPIView,
+    RetrieveUpdateDestroyAPIView,
+)
 from .serializers import (
     ConversationPrivateCreateSerializer,
     ConversationGroupCreateSerializer,
     ConversationListSerializer,
+    ConversationDetailSerializer,
 )
 from rest_framework.permissions import IsAuthenticated
 from .models import Conversation, ConversationMember
-from users.models import User
 from rest_framework.response import Response
 from rest_framework.status import HTTP_201_CREATED
 
@@ -84,6 +88,17 @@ class ConversationListView(ListAPIView):
 
     permission_classes = [IsAuthenticated]
     serializer_class = ConversationListSerializer
+
+    def get_queryset(self):
+        return Conversation.objects.filter(members__user=self.request.user)
+
+
+class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
+
+    serializer_class = ConversationDetailSerializer
+    permission_classes = [IsAuthenticated]
+
+    lookup_url_kwarg = "conversation_id"
 
     def get_queryset(self):
         return Conversation.objects.filter(members__user=self.request.user)

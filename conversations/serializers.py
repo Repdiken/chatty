@@ -41,3 +41,9 @@ class ConversationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = ["title", "profile_picture"]
+
+
+class ConversationDetailSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Conversation
+        fields = ["title", "description", "profile_picture"]

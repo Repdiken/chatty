@@ -1,11 +1,7 @@
-from datetime import timedelta
-from django.contrib.auth.hashers import check_password
-from django.utils import timezone
 from rest_framework import status
 from rest_framework.response import Response
 from rest_framework.generics import RetrieveUpdateAPIView, CreateAPIView
 from rest_framework.views import APIView
-from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User
 from .services import request_otp, verify_otp, OTPError
@@ -16,6 +12,8 @@ from .serializers import (
     PhoneNumberChangeSerializer,
     SetUsernameSerializer,
 )
+
+from .jwt import CustomTokenObtainPairSerializer
 
 
 class RegisterGetOTPAPIView(CreateAPIView):
@@ -58,7 +56,7 @@ class RegisterCreateAccountGetTokenAPIView(CreateAPIView):
             user = User.objects.create(
                 phone_number=phone_number,
             )
-            token = RefreshToken.for_user(user)
+            token = CustomTokenObtainPairSerializer.get_token(user)
             token["token_version"] = user.token_version
             return Response(
                 {
@@ -71,8 +69,9 @@ class RegisterCreateAccountGetTokenAPIView(CreateAPIView):
             return Response({"message": e.message}, status=e.status_code)
 
 
-class LoginGetOTPAPIView(APIView):
+class LoginGetOTPAPIView(CreateAPIView):
     permission_classes = [AllowAny]
+    serializer_class = RegisterSerializer
 
     def post(self, request):
         serializer = RegisterSerializer(data=request.data)
@@ -89,8 +88,9 @@ class LoginGetOTPAPIView(APIView):
             return Response({"message": e.message}, status=e.status_code)
 
 
-class LoginGetTokenAPIView(APIView):
+class LoginGetTokenAPIView(CreateAPIView):
     permission_classes = [AllowAny]
+    serializer_class = LoginSerializer
 
     def post(self, request):
         serializer = LoginSerializer(data=request.data)
@@ -107,7 +107,7 @@ class LoginGetTokenAPIView(APIView):
         try:
             verify_otp(phone_number, otp)
             user = User.objects.get(phone_number=phone_number)
-            token = RefreshToken.for_user(user)
+            token = CustomTokenObtainPairSerializer.get_token(user)
             return Response(
                 {
                     "access": str(token.access_token),
@@ -120,7 +120,7 @@ class LoginGetTokenAPIView(APIView):
 
 
 class CompleteProfieAPIView(RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = UserDetailSerializer
 
     def get_object(self):
@@ -128,7 +128,7 @@ class CompleteProfieAPIView(RetrieveUpdateAPIView):
 
 
 class PhoneNumberChangeGetOTPAPIVIEW(RetrieveUpdateAPIView):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [AllowAny]
     serializer_class = PhoneNumberChangeSerializer
 
     def get_object(self):
@@ -170,7 +170,7 @@ class PhoneNumberChangeGetTokenAPIVIEW(APIView):
             user.token_version += 1
             user.save()
 
-            token = RefreshToken.for_user(user)
+            token = CustomTokenObtainPairSerializer.get_token(user)
             token["token_version"] = user.token_version
             return Response(
                 {
