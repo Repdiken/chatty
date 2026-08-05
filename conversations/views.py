@@ -3,20 +3,30 @@ from rest_framework.generics import (
     ListAPIView,
     RetrieveUpdateDestroyAPIView,
 )
+
 from .serializers import (
     ConversationPrivateCreateSerializer,
     ConversationGroupCreateSerializer,
     ConversationListSerializer,
-    ConversationDetailSerializer,
+    ConversationGroupDetailSerializer,
+    ConversationPrivateDetailSerializer,
 )
+
 from rest_framework.permissions import IsAuthenticated
+from .permissions import IsConversationMemberPermission
+
 from .models import Conversation, ConversationMember
+
 from rest_framework.response import Response
-from rest_framework.status import HTTP_201_CREATED
+from rest_framework.status import HTTP_201_CREATED, HTTP_406_NOT_ACCEPTABLE, HTTP_200_OK
+
+from django.shortcuts import get_object_or_404
 
 
 class PrivateConversationCreateView(CreateAPIView):
+
     serializer_class = ConversationPrivateCreateSerializer
+
     permission_classes = [IsAuthenticated]
 
     def post(self, request, *args, **kwargs):
@@ -86,8 +96,8 @@ class GroupConversationCreateView(CreateAPIView):
 
 class ConversationListView(ListAPIView):
 
-    permission_classes = [IsAuthenticated]
     serializer_class = ConversationListSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         return Conversation.objects.filter(members__user=self.request.user)
@@ -95,10 +105,46 @@ class ConversationListView(ListAPIView):
 
 class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
 
-    serializer_class = ConversationDetailSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, IsConversationMemberPermission]
 
     lookup_url_kwarg = "conversation_id"
 
+    def get_serializer_class(self):
+
+        conversation = self.get_object()
+
+        if conversation.type == "private":
+            return ConversationPrivateDetailSerializer
+        else:
+            return ConversationGroupDetailSerializer
+
     def get_queryset(self):
         return Conversation.objects.filter(members__user=self.request.user)
+
+    def put(self, request, *args, **kwargs):
+
+        conversation = self.get_object()
+
+        if conversation.type == "private":
+            return Response(
+                {"message": "Can't change the details for a private chat."},
+                status=HTTP_406_NOT_ACCEPTABLE,
+            )
+        else:
+            serializer = self.get_serializer(
+                conversation,
+                data=request.data,
+                partial=True,
+                context={"request": request},
+            )
+            serializer.is_valid(raise_exception=True)
+
+            conversation.title = serializer.validated_data["title"]
+            conversation.description = serializer.validated_data["description"]
+            conversation.profile_picture = serializer.validated_data["profile_picture"]
+            conversation.save()
+
+            return Response(
+                {"message": "Successfully updated."},
+                status=HTTP_200_OK,
+            )

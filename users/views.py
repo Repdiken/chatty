@@ -120,7 +120,7 @@ class LoginGetTokenAPIView(CreateAPIView):
 
 
 class CompleteProfieAPIView(RetrieveUpdateAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     serializer_class = UserDetailSerializer
 
     def get_object(self):
@@ -128,7 +128,7 @@ class CompleteProfieAPIView(RetrieveUpdateAPIView):
 
 
 class PhoneNumberChangeGetOTPAPIVIEW(RetrieveUpdateAPIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
     serializer_class = PhoneNumberChangeSerializer
 
     def get_object(self):

@@ -40,10 +40,57 @@ class ConversationGroupCreateSerializer(serializers.Serializer):
 class ConversationListSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
-        fields = ["title", "profile_picture"]
+        fields = ["id", "title", "profile_picture"]
 
 
-class ConversationDetailSerializer(serializers.ModelSerializer):
+class ConversationGroupDetailSerializer(serializers.ModelSerializer):
     class Meta:
         model = Conversation
         fields = ["title", "description", "profile_picture"]
+
+
+class ConversationPrivateDetailSerializer(serializers.ModelSerializer):
+    title = serializers.SerializerMethodField()
+    profile_picture = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Conversation
+        fields = ["id", "title", "profile_picture"]
+
+        read_only_fields = ["title", "profile_picture"]
+
+    def get_other_user(self, obj):
+        """
+        Helper method to fetch the other user in the private chat
+        so we don't repeat the database query twice.
+        """
+        current_user = self.context["request"].user
+
+        # Grab the first ConversationMember that is NOT the current user
+        other_member = obj.members.exclude(user=current_user).first()
+
+        # Return the actual User instance linked to that member
+        if other_member:
+            return other_member.user
+        return None
+
+    def get_title(self, obj):
+        other_user = self.get_other_user(obj)
+
+        if other_user:
+            return other_user.username
+
+        return "Unknown User"
+
+    def get_profile_picture(self, obj):
+        other_user = self.get_other_user(obj)
+
+        # Check if the user exists AND if they actually uploaded a picture
+        if other_user and other_user.profile_picture:
+            request = self.context.get("request")
+            photo_url = other_user.profile_picture.url
+
+            # build_absolute_uri ensures the frontend gets a full URL (http://127.0.0.1:8000/media/...)
+            return request.build_absolute_uri(photo_url) if request else photo_url
+
+        return None
