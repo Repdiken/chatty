@@ -8,6 +8,7 @@ from .views import (
     PhoneNumberChangeGetOTPAPIVIEW,
     PhoneNumberChangeGetTokenAPIVIEW,
     SetUsernameAPIView,
+    SetPasswordAPIView,
 )
 
 urlpatterns = [
@@ -15,11 +16,14 @@ urlpatterns = [
     path("auth/register/verify", RegisterCreateAccountGetTokenAPIView.as_view()),
     path("auth/login/request-otp", LoginGetOTPAPIView.as_view()),
     path("auth/login/verify", LoginGetTokenAPIView.as_view()),
-    path("users/me", CompleteProfieAPIView.as_view()),
-    path("users/me/phone-number-change", PhoneNumberChangeGetOTPAPIVIEW.as_view()),
+    path("users/me/about/", CompleteProfieAPIView.as_view()),
     path(
-        "users/me/phone-number-change/verify",
+        "users/me/about/phone-number-change", PhoneNumberChangeGetOTPAPIVIEW.as_view()
+    ),
+    path(
+        "users/me/about/phone-number-change/verify",
         PhoneNumberChangeGetTokenAPIVIEW.as_view(),
     ),
-    path("users/me/username-change", SetUsernameAPIView.as_view()),
+    path("users/me/about/username-change", SetUsernameAPIView.as_view()),
+    path("users/me/security/2fa", SetPasswordAPIView.as_view()),
 ]

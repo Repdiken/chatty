@@ -1,6 +1,6 @@
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.generics import RetrieveUpdateAPIView, CreateAPIView
+from rest_framework.generics import RetrieveUpdateAPIView, CreateAPIView, UpdateAPIView
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User
@@ -11,6 +11,8 @@ from .serializers import (
     UserDetailSerializer,
     PhoneNumberChangeSerializer,
     SetUsernameSerializer,
+    SetPasswordSerializer,
+    ChangePasswordSerializer,
 )
 
 from .jwt import CustomTokenObtainPairSerializer
@@ -53,9 +55,9 @@ class RegisterCreateAccountGetTokenAPIView(CreateAPIView):
 
         try:
             verify_otp(phone_number, otp)
-            user = User.objects.create(
-                phone_number=phone_number,
-            )
+            user = User.objects.create(phone_number=phone_number)
+            user.set_unusable_password()
+            user.save()
             token = CustomTokenObtainPairSerializer.get_token(user)
             token["token_version"] = user.token_version
             return Response(
@@ -189,3 +191,46 @@ class SetUsernameAPIView(RetrieveUpdateAPIView):
 
     def get_object(self):
         return self.request.user
+
+
+class SetPasswordAPIView(UpdateAPIView):
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+    def get_serializer_class(self):
+        # Choose the serializer based on if they already have a password
+        if self.request.user.has_usable_password():
+            return ChangePasswordSerializer
+        return SetPasswordSerializer
+
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+        # You need to pass the request into the context whenever your serializer
+        # needs to make decisions based on the current user or the server state
+        # self.get_serializer() automatically calls get_serializer_class()
+        # & it automatically passes context={'request': request}
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        # Apply the correct password field based on their state
+        if user.has_usable_password():
+            user.set_password(serializer.validated_data["new_password"])
+        else:
+            user.set_password(serializer.validated_data["password"])
+
+        # Invalidate old tokens
+        user.token_version += 1
+        user.save()
+
+        token = CustomTokenObtainPairSerializer.get_token(user)
+
+        return Response(
+            {
+                "message": "Password updated successfully.",
+                "access": str(token.access_token),
+                "refresh": str(token),
+            },
+            status=status.HTTP_200_OK,
+        )

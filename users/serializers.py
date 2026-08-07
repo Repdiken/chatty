@@ -1,7 +1,7 @@
 from rest_framework import serializers
 import phonenumbers
 from .models import User
-import re
+from django.contrib.auth.password_validation import validate_password
 
 
 def normalize_phone_number(value):
@@ -70,3 +70,40 @@ class SetUsernameSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ["username"]
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    password = serializers.CharField(write_only=True)
+    password_2 = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        if attrs["password"] != attrs["password_2"]:
+            raise serializers.ValidationError({"password_2": "Passwords do not match."})
+
+        # Django's built-in validator checks length, common passwords, etc.
+        validate_password(attrs["password"])
+        return attrs
+
+
+class ChangePasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+    new_password = serializers.CharField(write_only=True)
+    new_password_2 = serializers.CharField(write_only=True)
+
+    def validate_current_password(self, value):
+        # Grab the user making the request
+        user = self.context["request"].user
+
+        # Verify the hash matches
+        if not user.check_password(value):
+            raise serializers.ValidationError("Incorrect current password.")
+        return value
+
+    def validate(self, attrs):
+        if attrs["new_password"] != attrs["new_password_2"]:
+            raise serializers.ValidationError(
+                {"new_password_2": "New passwords do not match."}
+            )
+
+        validate_password(attrs["new_password"])
+        return attrs
