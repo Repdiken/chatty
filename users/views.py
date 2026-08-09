@@ -3,7 +3,7 @@ from rest_framework.response import Response
 from rest_framework.generics import RetrieveUpdateAPIView, CreateAPIView, UpdateAPIView
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
-from .models import User
+from .models import User, OTP
 from .services import request_otp, verify_otp, OTPError
 from .serializers import (
     LoginSerializer,
@@ -13,6 +13,7 @@ from .serializers import (
     SetUsernameSerializer,
     SetPasswordSerializer,
     ChangePasswordSerializer,
+    CheckPasswordSerializer,
 )
 
 from .jwt import CustomTokenObtainPairSerializer
@@ -109,16 +110,42 @@ class LoginGetTokenAPIView(CreateAPIView):
         try:
             verify_otp(phone_number, otp)
             user = User.objects.get(phone_number=phone_number)
-            token = CustomTokenObtainPairSerializer.get_token(user)
-            return Response(
-                {
-                    "access": str(token.access_token),
-                    "refresh": str(token),
-                },
-                status=status.HTTP_200_OK,
-            )
+            if user.two_factor_enabled == False:
+                token = CustomTokenObtainPairSerializer.get_token(user)
+                return Response(
+                    {
+                        "access": str(token.access_token),
+                        "refresh": str(token),
+                    },
+                    status=status.HTTP_200_OK,
+                )
+            else:
+                return Response({"message": "OTP verified."}, status=status.HTTP_200_OK)
         except OTPError as e:
             return Response({"message": e.message}, status=e.status_code)
+
+
+class LoginCheckPasswordAPIView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        serializer = CheckPasswordSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = serializer.validated_data["user"]
+        otp = serializer.validated_data["otp"]
+
+        otp.delete()
+
+        token = CustomTokenObtainPairSerializer.get_token(user)
+
+        return Response(
+            {
+                "access": str(token.access_token),
+                "refresh": str(token),
+            },
+            status=status.HTTP_200_OK,
+        )
 
 
 class CompleteProfieAPIView(RetrieveUpdateAPIView):
@@ -222,6 +249,7 @@ class SetPasswordAPIView(UpdateAPIView):
 
         # Invalidate old tokens
         user.token_version += 1
+        user.two_factor_enabled = True
         user.save()
 
         token = CustomTokenObtainPairSerializer.get_token(user)

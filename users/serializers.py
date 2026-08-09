@@ -1,6 +1,6 @@
 from rest_framework import serializers
 import phonenumbers
-from .models import User
+from .models import User, OTP
 from django.contrib.auth.password_validation import validate_password
 
 
@@ -106,4 +106,37 @@ class ChangePasswordSerializer(serializers.Serializer):
             )
 
         validate_password(attrs["new_password"])
+        return attrs
+
+
+class CheckPasswordSerializer(serializers.Serializer):
+    phone_number = serializers.CharField(max_length=20)
+    password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        phone_number = attrs["phone_number"]
+        password = attrs["password"]
+
+        user = User.objects.filter(phone_number=phone_number).first()
+        otp = OTP.objects.filter(phone_number=phone_number).first()
+
+        if not user:
+            raise serializers.ValidationError({"phone_number": "User does not exist."})
+
+        if not otp:
+            raise serializers.ValidationError(
+                {"phone_number": "No active OTP session found."}
+            )
+
+        if not otp.is_verified:
+            raise serializers.ValidationError(
+                {"phone_number": "OTP is not verified yet."}
+            )
+
+        if not user.check_password(password):
+            raise serializers.ValidationError({"password": "Incorrect password."})
+
+        attrs["user"] = user
+        attrs["otp"] = otp
+
         return attrs

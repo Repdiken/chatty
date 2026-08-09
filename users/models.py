@@ -50,3 +50,5 @@ class OTP(models.Model):
     expires_at = models.DateTimeField()
 
     created_at = models.DateTimeField(auto_now_add=True)
+
+    is_verified = models.BooleanField(default=False)

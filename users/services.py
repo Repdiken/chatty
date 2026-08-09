@@ -89,8 +89,15 @@ def verify_otp(phone_number: str, otp: str) -> bool:
 
     # Verify Password Hash
     if check_password(otp, current_otp.code_hash):
-        current_otp.delete()
-        return True
+        user = User.objects.get(phone_number=phone_number)
+        if user.two_factor_enabled == False:
+
+            current_otp.delete()
+            return True
+        else:
+            current_otp.is_verified = True
+            current_otp.save()
+            return True
 
     # Penalty for wrong OTP
     current_otp.attempts += 1

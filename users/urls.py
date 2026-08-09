@@ -9,6 +9,7 @@ from .views import (
     PhoneNumberChangeGetTokenAPIVIEW,
     SetUsernameAPIView,
     SetPasswordAPIView,
+    LoginCheckPasswordAPIView,
 )
 
 urlpatterns = [
@@ -16,6 +17,7 @@ urlpatterns = [
     path("auth/register/verify", RegisterCreateAccountGetTokenAPIView.as_view()),
     path("auth/login/request-otp", LoginGetOTPAPIView.as_view()),
     path("auth/login/verify", LoginGetTokenAPIView.as_view()),
+    path("auth/login/2fa", LoginCheckPasswordAPIView.as_view()),
     path("users/me/about/", CompleteProfieAPIView.as_view()),
     path(
         "users/me/about/phone-number-change", PhoneNumberChangeGetOTPAPIVIEW.as_view()
