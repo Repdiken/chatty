@@ -39,6 +39,14 @@ def request_otp(phone_number: str, is_login: bool = False) -> str:
 
     current_otp = OTP.objects.filter(phone_number=phone_number).first()
 
+    # Check if an OTP was generated recently or not
+    if current_otp and current_otp.last_sent_at:
+        if now < current_otp.last_sent_at + timedelta(minutes=2):
+            raise OTPError(
+                "An OTP was generated recently. Use that or wait a bit before asking for a new one.",
+                403,
+            )
+
     # Handle lockout state
     if current_otp and current_otp.locked_until:
         if current_otp.locked_until > now:
@@ -49,14 +57,14 @@ def request_otp(phone_number: str, is_login: bool = False) -> str:
             current_otp.save()
 
     otp = generate_otp()
-    expires_at = now + timedelta(minutes=3)
 
     # Preserve attempts if not locked out, or reset if fresh request
     OTP.objects.update_or_create(
         phone_number=phone_number,
         defaults={
             "code_hash": hash_otp(otp),
-            "expires_at": expires_at,
+            "expires_at": now + timedelta(minutes=3),
+            "last_sent_at": now,
         },
     )
 
@@ -87,17 +95,18 @@ def verify_otp(phone_number: str, otp: str) -> bool:
         current_otp.delete()
         raise OTPError(f"The OTP for {phone_number} has expired.", 400)
 
-    # Verify Password Hash
     if check_password(otp, current_otp.code_hash):
-        user = User.objects.get(phone_number=phone_number)
-        if user.two_factor_enabled == False:
+        user = User.objects.filter(phone_number=phone_number).first()
 
-            current_otp.delete()
-            return True
-        else:
+        # If the user exists and has 2FA enabled, keep the OTP for the next step
+        if user and user.two_factor_enabled:
             current_otp.is_verified = True
             current_otp.save()
-            return True
+        else:
+            # Otherwise (registration or standard login), clean it up
+            current_otp.delete()
+
+        return True
 
     # Penalty for wrong OTP
     current_otp.attempts += 1
