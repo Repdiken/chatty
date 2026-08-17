@@ -2,6 +2,7 @@ from rest_framework import serializers
 import phonenumbers
 from .models import User, OTP
 from django.contrib.auth.password_validation import validate_password
+from django.utils import timezone
 
 
 def normalize_phone_number(value):
@@ -136,7 +137,10 @@ class CheckPasswordSerializer(serializers.Serializer):
         if not user.check_password(password):
             raise serializers.ValidationError({"password": "Incorrect password."})
 
+        if otp.expires_at < timezone.now():
+            otp.delete()
+            raise serializers.ValidationError({"phone_number": "This 2FA session has expired."})
+
         attrs["user"] = user
         attrs["otp"] = otp
-
         return attrs
