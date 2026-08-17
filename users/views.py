@@ -1,6 +1,10 @@
 from rest_framework import status
 from rest_framework.response import Response
-from rest_framework.generics import RetrieveUpdateAPIView, CreateAPIView, UpdateAPIView
+from rest_framework.generics import (
+    RetrieveUpdateAPIView,
+    CreateAPIView,
+    UpdateAPIView,
+)
 from rest_framework.views import APIView
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from .models import User, OTP
@@ -14,6 +18,7 @@ from .serializers import (
     SetPasswordSerializer,
     ChangePasswordSerializer,
     CheckPasswordSerializer,
+    Remove2FAPasswordSerializer,
 )
 
 from .jwt import CustomTokenObtainPairSerializer
@@ -257,6 +262,35 @@ class SetPasswordAPIView(UpdateAPIView):
         return Response(
             {
                 "message": "Password updated successfully.",
+                "access": str(token.access_token),
+                "refresh": str(token),
+            },
+            status=status.HTTP_200_OK,
+        )
+
+
+class Remove2FAPasswordAPIView(UpdateAPIView):
+    serializer_class = Remove2FAPasswordSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_object(self):
+        return self.request.user
+
+    def update(self, request, *args, **kwargs):
+        user = self.get_object()
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user.two_factor_enabled = False
+        user.set_unusable_password()
+        user.token_version += 1
+        user.save()
+
+        token = CustomTokenObtainPairSerializer.get_token(user)
+        return Response(
+            {
+                "message": "2FA disabled successfully.",
                 "access": str(token.access_token),
                 "refresh": str(token),
             },

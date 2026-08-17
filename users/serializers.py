@@ -139,8 +139,26 @@ class CheckPasswordSerializer(serializers.Serializer):
 
         if otp.expires_at < timezone.now():
             otp.delete()
-            raise serializers.ValidationError({"phone_number": "This 2FA session has expired."})
+            raise serializers.ValidationError(
+                {"phone_number": "This 2FA session has expired."}
+            )
 
         attrs["user"] = user
         attrs["otp"] = otp
+        return attrs
+
+
+class Remove2FAPasswordSerializer(serializers.Serializer):
+    current_password = serializers.CharField(write_only=True)
+
+    def validate(self, attrs):
+        user = self.context["request"].user
+        current_password = attrs["current_password"]
+
+        if user.two_factor_enabled == False:
+            raise serializers.ValidationError({"current_password": "You don't have an active 2FA."})
+
+        if not user.check_password(current_password):
+            raise serializers.ValidationError({"current_password": "Incorrect password."})
+
         return attrs

@@ -10,6 +10,7 @@ from .views import (
     SetUsernameAPIView,
     SetPasswordAPIView,
     LoginCheckPasswordAPIView,
+    Remove2FAPasswordAPIView,
 )
 
 urlpatterns = [
@@ -28,4 +29,5 @@ urlpatterns = [
     ),
     path("users/me/about/username-change", SetUsernameAPIView.as_view()),
     path("users/me/security/2fa", SetPasswordAPIView.as_view()),
+    path("users/me/security/2fa/remove", Remove2FAPasswordAPIView.as_view()),
 ]
