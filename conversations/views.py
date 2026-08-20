@@ -3,6 +3,7 @@ from rest_framework.generics import (
     ListAPIView,
     RetrieveUpdateDestroyAPIView,
 )
+from rest_framework.views import APIView
 
 from .serializers import (
     ConversationPrivateCreateSerializer,
@@ -13,14 +14,21 @@ from .serializers import (
 )
 
 from rest_framework.permissions import IsAuthenticated
-from .permissions import IsConversationMemberPermission
+from .permissions import IsGroupOwnerPermission
 
 from .models import Conversation, ConversationMember
 
 from rest_framework.response import Response
-from rest_framework.status import HTTP_201_CREATED, HTTP_406_NOT_ACCEPTABLE, HTTP_200_OK
+from rest_framework.status import (
+    HTTP_201_CREATED,
+    HTTP_406_NOT_ACCEPTABLE,
+    HTTP_200_OK,
+    HTTP_403_FORBIDDEN,
+)
 
 from django.shortcuts import get_object_or_404
+
+from django.utils import timezone
 
 
 class PrivateConversationCreateView(CreateAPIView):
@@ -42,7 +50,7 @@ class PrivateConversationCreateView(CreateAPIView):
             conversation=conversation, user=creator, role=ConversationMember.Role.MEMBER
         )
 
-        return Response({"message: Conversation created"})
+        return Response({"message": "Conversation created"})
 
 
 class GroupConversationCreateView(CreateAPIView):
@@ -100,12 +108,22 @@ class ConversationListView(ListAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return Conversation.objects.filter(members__user=self.request.user)
+        return Conversation.objects.filter(
+            members__user=self.request.user,
+            deleted_at__isnull=True,
+            members__deleted_at__isnull=True,
+        )
 
 
 class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
 
-    permission_classes = [IsAuthenticated, IsConversationMemberPermission]
+    def get_permissions(self):
+        if self.request.method == "DELETE":
+            permission_classes = [IsGroupOwnerPermission, IsAuthenticated]
+        else:
+            permission_classes = [IsAuthenticated]
+
+        return [permission() for permission in permission_classes]
 
     lookup_url_kwarg = "conversation_id"
 
@@ -119,7 +137,11 @@ class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
             return ConversationGroupDetailSerializer
 
     def get_queryset(self):
-        return Conversation.objects.filter(members__user=self.request.user)
+        return Conversation.objects.filter(
+            members__user=self.request.user,
+            deleted_at__isnull=True,
+            members__deleted_at__isnull=True,
+        )
 
     def put(self, request, *args, **kwargs):
 
@@ -148,3 +170,34 @@ class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
                 {"message": "Successfully updated."},
                 status=HTTP_200_OK,
             )
+
+    def perform_destroy(self, instance):
+        # Instead of instance.delete(), we soft delete it.
+        instance.deleted_at = timezone.now()
+        instance.save()
+
+
+class LeaveConversationAPIView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        # If the chat doesn't exist, OR if they aren't in it, this returns a 404
+        member = get_object_or_404(
+            ConversationMember,
+            conversation_id=conversation_id,
+            user=request.user,
+            deleted_at__isnull=True,
+        )
+
+        if member.role == ConversationMember.Role.OWNER:
+            return Response(
+                {"error": "Owners cannot leave without transferring ownership."},
+                status=HTTP_403_FORBIDDEN,
+            )
+
+        member.deleted_at = timezone.now()
+        member.save()
+
+        return Response(
+            {"message": "You have left the conversation."}, status=HTTP_200_OK
+        )

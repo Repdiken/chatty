@@ -4,6 +4,7 @@ from .views import (
     GroupConversationCreateView,
     ConversationListView,
     ConversationDetailListView,
+    LeaveConversationAPIView,
 )
 
 urlpatterns = [
@@ -11,4 +12,7 @@ urlpatterns = [
     path("conversations/create-group", GroupConversationCreateView.as_view()),
     path("conversations", ConversationListView.as_view()),
     path("conversations/<int:conversation_id>", ConversationDetailListView.as_view()),
+    path(
+        "conversations/<int:conversation_id>/leave", LeaveConversationAPIView.as_view()
+    ),
 ]
