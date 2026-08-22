@@ -3,6 +3,10 @@ db.sqlite3
 media/
 .venv/
 __pycache__/
+.pytest_cache/
 *.pyc
 .vscode/
 .idea/
+pfp/
+.pytest_cache/
+pfp/
