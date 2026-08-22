@@ -136,3 +136,20 @@ class ConversationMemberDetailSerializer(serializers.ModelSerializer):
         model = ConversationMember
         fields = ["user", "role"]
         read_only_fields = ["user"]
+
+    def validate_role(self, value):
+        if value == ConversationMember.Role.OWNER:
+            raise serializers.ValidationError(
+                "Use the ownership transfer endpoint to assign an owner."
+            )
+        return value
+
+
+class TransferOwnershipSerializer(serializers.Serializer):
+    username = serializers.CharField()
+
+    def validate_username(self, value):
+        try:
+            return User.objects.get(username=value)
+        except User.DoesNotExist:
+            raise serializers.ValidationError("User does not exist.")

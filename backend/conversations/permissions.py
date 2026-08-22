@@ -4,12 +4,17 @@ from .models import Conversation, ConversationMember
 
 
 class IsConversationMemberPermission(BasePermission):
-    def has_permission(self, request, view):
+    """Allow only active members to access an active group conversation."""
 
+    def has_permission(self, request, view):
         conversation_id = view.kwargs.get("conversation_id")
 
         return Conversation.objects.filter(
-            id=conversation_id, members__user=request.user
+            id=conversation_id,
+            type=Conversation.Type.GROUP,
+            deleted_at__isnull=True,
+            members__user=request.user,
+            members__deleted_at__isnull=True,
         ).exists()
 
 

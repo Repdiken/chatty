@@ -12,11 +12,13 @@ from .serializers import (
     ConversationGroupDetailSerializer,
     ConversationPrivateDetailSerializer,
     ConversationMemberDetailSerializer,
+    TransferOwnershipSerializer,
 )
 
 from rest_framework.permissions import IsAuthenticated
 from .permissions import (
     CanManageConversationMemberPermission,
+    IsConversationMemberPermission,
     IsGroupOwnerOrAdminPermission,
     IsGroupOwnerPermission,
 )
@@ -35,6 +37,7 @@ from rest_framework.status import (
 from django.shortcuts import get_object_or_404
 
 from django.utils import timezone
+from django.db import transaction
 
 
 class PrivateConversationCreateView(CreateAPIView):
@@ -216,9 +219,15 @@ class ConversationDetailListView(RetrieveUpdateDestroyAPIView):
         return self.put(request, *args, **kwargs)
 
     def perform_destroy(self, instance):
-        # Instead of instance.delete(), we soft delete it.
-        instance.deleted_at = timezone.now()
-        instance.save()
+        # Soft-delete the group and its memberships together so no member can
+        # keep using a deleted group through another endpoint.
+        deleted_at = timezone.now()
+        with transaction.atomic():
+            ConversationMember.objects.filter(
+                conversation=instance, deleted_at__isnull=True
+            ).update(deleted_at=deleted_at)
+            instance.deleted_at = deleted_at
+            instance.save(update_fields=["deleted_at"])
 
 
 class LeaveConversationAPIView(APIView):
@@ -262,3 +271,68 @@ class ConversationMemberDetailAPIView(RetrieveUpdateDestroyAPIView):
     def perform_destroy(self, instance):
         instance.deleted_at = timezone.now()
         instance.save(update_fields=["deleted_at"])
+
+
+class ConversationMemberListAPIView(ListAPIView):
+    """List active members for a group the requesting user belongs to."""
+
+    serializer_class = ConversationMemberDetailSerializer
+    permission_classes = [IsAuthenticated, IsConversationMemberPermission]
+
+    def get_queryset(self):
+        return ConversationMember.objects.filter(
+            conversation_id=self.kwargs["conversation_id"],
+            conversation__type=Conversation.Type.GROUP,
+            conversation__deleted_at__isnull=True,
+            deleted_at__isnull=True,
+        ).select_related("user")
+
+
+class TransferConversationOwnershipAPIView(APIView):
+    """Transfer a group's sole owner role to another active member."""
+
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, conversation_id):
+        serializer = TransferOwnershipSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        target_user = serializer.validated_data["username"]
+
+        with transaction.atomic():
+            conversation = get_object_or_404(
+                Conversation.objects.select_for_update(),
+                id=conversation_id,
+                type=Conversation.Type.GROUP,
+                deleted_at__isnull=True,
+            )
+            current_owner = get_object_or_404(
+                ConversationMember.objects.select_for_update(),
+                conversation=conversation,
+                user=request.user,
+                role=ConversationMember.Role.OWNER,
+                deleted_at__isnull=True,
+            )
+            new_owner = get_object_or_404(
+                ConversationMember.objects.select_for_update(),
+                conversation=conversation,
+                user=target_user,
+                deleted_at__isnull=True,
+            )
+
+            if new_owner == current_owner:
+                return Response(
+                    {"message": "You already own this group."},
+                    status=HTTP_400_BAD_REQUEST,
+                )
+
+            # Demote first so the database's one-owner constraint is true at
+            # every completed write, then promote the selected member.
+            current_owner.role = ConversationMember.Role.MEMBER
+            current_owner.save(update_fields=["role"])
+            new_owner.role = ConversationMember.Role.OWNER
+            new_owner.save(update_fields=["role"])
+
+        return Response(
+            {"message": "Ownership transferred successfully."},
+            status=HTTP_200_OK,
+        )

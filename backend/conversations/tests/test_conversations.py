@@ -28,6 +28,11 @@ def user3():
     return User.objects.create(username="charlie", phone_number="+1234567892")
 
 
+@pytest.fixture
+def user4():
+    return User.objects.create(username="diana", phone_number="+1234567893")
+
+
 # --- TESTS ---
 
 class TestConversationCreation:
@@ -162,6 +167,9 @@ class TestConversationSecurityAndPermissions:
         # Verify the soft delete actually applied the timestamp
         conversation.refresh_from_db()
         assert conversation.deleted_at is not None
+        assert not ConversationMember.objects.filter(
+            conversation=conversation, deleted_at__isnull=True
+        ).exists()
 
     def test_cannot_delete_private_chats(self, client, user1, user2):
         """Check that members cannot delete private chats."""
@@ -270,6 +278,21 @@ class TestConversationMemberManagement:
     def member_url(self, group, member):
         return f"/conversations/{group.id}/members/{member.id}"
 
+    def test_every_active_group_member_can_list_members(self, client, user3, group):
+        client.force_authenticate(user=user3)
+
+        response = client.get(f"/conversations/{group.id}/members/")
+
+        assert response.status_code == 200
+        assert len(response.data) == 3
+
+    def test_non_member_cannot_list_group_members(self, client, user4, group):
+        client.force_authenticate(user=user4)
+
+        response = client.get(f"/conversations/{group.id}/members/")
+
+        assert response.status_code == 403
+
     def test_only_owner_can_promote_a_member_to_admin(self, client, user1, user2, user3, group):
         member = ConversationMember.objects.get(conversation=group, user=user3)
 
@@ -286,6 +309,49 @@ class TestConversationMemberManagement:
         assert allowed.status_code == 200
         member.refresh_from_db()
         assert member.role == ConversationMember.Role.ADMIN
+
+    def test_owner_can_only_be_changed_by_transferring_ownership(
+        self, client, user1, user2, user3, group
+    ):
+        member = ConversationMember.objects.get(conversation=group, user=user3)
+        client.force_authenticate(user=user1)
+
+        direct_promotion = client.patch(
+            self.member_url(group, member), {"role": "owner"}, format="json"
+        )
+        assert direct_promotion.status_code == 400
+
+        transfer = client.post(
+            f"/conversations/{group.id}/transfer-ownership",
+            {"username": user3.username},
+            format="json",
+        )
+        assert transfer.status_code == 200
+
+        previous_owner = ConversationMember.objects.get(conversation=group, user=user1)
+        new_owner = ConversationMember.objects.get(conversation=group, user=user3)
+        assert previous_owner.role == ConversationMember.Role.MEMBER
+        assert new_owner.role == ConversationMember.Role.OWNER
+        assert ConversationMember.objects.filter(
+            conversation=group, role=ConversationMember.Role.OWNER
+        ).count() == 1
+
+    def test_non_owner_cannot_transfer_ownership(self, client, user2, user3, group):
+        client.force_authenticate(user=user2)  # user2 is an admin, not the owner
+
+        response = client.post(
+            f"/conversations/{group.id}/transfer-ownership",
+            {"username": user3.username},
+            format="json",
+        )
+
+        assert response.status_code == 404
+        assert ConversationMember.objects.get(
+            conversation=group, user=user2
+        ).role == ConversationMember.Role.ADMIN
+        assert ConversationMember.objects.get(
+            conversation=group, user=user3
+        ).role == ConversationMember.Role.MEMBER
 
     def test_admin_cannot_remove_owner_or_another_admin(self, client, user1, user2, user3, group):
         owner = ConversationMember.objects.get(conversation=group, user=user1)

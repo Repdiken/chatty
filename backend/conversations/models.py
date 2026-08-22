@@ -52,6 +52,13 @@ class ConversationMember(models.Model):
 
     class Meta:
         unique_together = ("conversation", "user")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["conversation"],
+                condition=models.Q(role="owner"),
+                name="one_owner_per_conversation",
+            )
+        ]
 
     def __str__(self):
         return f"{self.user} in {self.conversation}"
